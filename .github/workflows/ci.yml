@@ -1,0 +1,31 @@
+name: CI (Continuous Integration)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-services:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth-service, vehicules-service, trafic-service, incidents-service, notifications-service, gateway]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies for ${{ matrix.service }}
+        run: npm install
+        working-directory: ./services/${{ matrix.service }}
+
+      - name: Check syntax for ${{ matrix.service }}
+        run: node --check server.js
+        working-directory: ./services/${{ matrix.service }}
+        working-directory: ./services/${{ matrix.service }}
