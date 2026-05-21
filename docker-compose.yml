@@ -1,0 +1,119 @@
+
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: traffic-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: smart_traffic
+      MYSQL_USER: traffic_user
+      MYSQL_PASSWORD: traffic_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpassword"]
+      timeout: 20s
+      retries: 10
+
+  auth-service:
+    build: ./services/auth-service
+    container_name: traffic-auth
+    ports:
+      - "5001:5001"
+    environment:
+      PORT: 5001
+      DB_HOST: mysql
+      DB_USER: traffic_user
+      DB_PASSWORD: traffic_pass
+      DB_NAME: smart_traffic
+      JWT_SECRET: votre_secret_jwt
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  vehicules-service:
+    build: ./services/vehicules-service
+    container_name: traffic-vehicules
+    ports:
+      - "5002:5002"
+    environment:
+      PORT: 5002
+      DB_HOST: mysql
+      DB_USER: traffic_user
+      DB_PASSWORD: traffic_pass
+      DB_NAME: smart_traffic
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  trafic-service:
+    build: ./services/trafic-service
+    container_name: traffic-trafic
+    ports:
+      - "5003:5003"
+    environment:
+      PORT: 5003
+      DB_HOST: mysql
+      DB_USER: traffic_user
+      DB_PASSWORD: traffic_pass
+      DB_NAME: smart_traffic
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  incidents-service:
+    build: ./services/incidents-service
+    container_name: traffic-incidents
+    ports:
+      - "5004:5004"
+    environment:
+      PORT: 5004
+      DB_HOST: mysql
+      DB_USER: traffic_user
+      DB_PASSWORD: traffic_pass
+      DB_NAME: smart_traffic
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  notifications-service:
+    build: ./services/notifications-service
+    container_name: traffic-notifications
+    ports:
+      - "5005:5005"
+    environment:
+      PORT: 5005
+      DB_HOST: mysql
+      DB_USER: traffic_user
+      DB_PASSWORD: traffic_pass
+      DB_NAME: smart_traffic
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  gateway:
+    build: ./services/gateway
+    container_name: traffic-gateway
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth-service:5001
+      VEHICULES_SERVICE_URL: http://vehicules-service:5002
+      TRAFIC_SERVICE_URL: http://trafic-service:5003
+      INCIDENTS_SERVICE_URL: http://incidents-service:5004
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:5005
+    depends_on:
+      - auth-service
+      - vehicules-service
+      - trafic-service
+      - incidents-service
+      - notifications-service
+
+volumes:
+  mysql-data:

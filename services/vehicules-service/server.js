@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const axios = require('axios');
@@ -7,12 +8,12 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-
+// Connexion à MySQL via variables d'environnement
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'smart_traffic'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
 db.connect((err) => {
@@ -24,8 +25,9 @@ db.connect((err) => {
     console.log('✅ Vehicules service - Connecté à MySQL');
 });
 
-const AUTH_SERVICE_URL = 'http://localhost:5001';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
 
+// Middleware de vérification JWT (identique)
 const verifierToken = async (req, res, next) => {
     const token = req.headers.authorization;
 
@@ -37,7 +39,6 @@ const verifierToken = async (req, res, next) => {
     }
 
     try {
-        // Vérifier le token auprès du service Auth
         const response = await axios.post(`${AUTH_SERVICE_URL}/verify`, {}, {
             headers: { authorization: token }
         });
@@ -59,10 +60,10 @@ const verifierToken = async (req, res, next) => {
     }
 };
 
+// ========== ROUTES (inchangées) ==========
 app.post('/vehicules', verifierToken, (req, res) => {
     const { immatriculation, marque, modele, proprietaire_id } = req.body;
 
-    // Validation des champs
     if (!immatriculation || !marque || !modele) {
         return res.status(400).json({
             success: false,
@@ -88,7 +89,6 @@ app.post('/vehicules', verifierToken, (req, res) => {
                     error: err.message
                 });
             }
-
             res.status(201).json({
                 success: true,
                 message: '✅ Véhicule ajouté avec succès',
@@ -103,84 +103,35 @@ app.post('/vehicules', verifierToken, (req, res) => {
     );
 });
 
-
 app.get('/vehicules', verifierToken, (req, res) => {
     db.query('SELECT * FROM vehicules ORDER BY id DESC', (err, results) => {
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                error: err.message
-            });
-        }
-
-        res.json({
-            success: true,
-            count: results.length,
-            vehicules: results
-        });
+        if (err) return res.status(500).json({ success: false, error: err.message });
+        res.json({ success: true, count: results.length, vehicules: results });
     });
 });
 
 app.get('/vehicules/:id', verifierToken, (req, res) => {
     const { id } = req.params;
-
     db.query('SELECT * FROM vehicules WHERE id = ?', [id], (err, results) => {
-        if (err) {
-            return res.status(500).json({
-                success: false,
-                error: err.message
-            });
-        }
-
-        if (results.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Véhicule non trouvé'
-            });
-        }
-
-        res.json({
-            success: true,
-            vehicule: results[0]
-        });
+        if (err) return res.status(500).json({ success: false, error: err.message });
+        if (results.length === 0) return res.status(404).json({ success: false, error: 'Véhicule non trouvé' });
+        res.json({ success: true, vehicule: results[0] });
     });
 });
 
-
 app.post('/positions', verifierToken, (req, res) => {
     const { vehicule_id, latitude, longitude, vitesse } = req.body;
-
-    // Validation
     if (!vehicule_id || !latitude || !longitude) {
-        return res.status(400).json({
-            success: false,
-            error: 'Champs requis: vehicule_id, latitude, longitude'
-        });
+        return res.status(400).json({ success: false, error: 'Champs requis: vehicule_id, latitude, longitude' });
     }
-
-    // Vérifier que le véhicule existe
     db.query('SELECT id FROM vehicules WHERE id = ?', [vehicule_id], (err, results) => {
         if (err) return res.status(500).json({ success: false, error: err.message });
-
-        if (results.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Véhicule non trouvé'
-            });
-        }
-
-        // Enregistrer la position
+        if (results.length === 0) return res.status(404).json({ success: false, error: 'Véhicule non trouvé' });
         db.query(
             'INSERT INTO positions_gps (vehicule_id, latitude, longitude, vitesse) VALUES (?, ?, ?, ?)',
             [vehicule_id, latitude, longitude, vitesse || null],
-            (err, result) => {
-                if (err) {
-                    return res.status(500).json({
-                        success: false,
-                        error: err.message
-                    });
-                }
-
+            (err2, result) => {
+                if (err2) return res.status(500).json({ success: false, error: err2.message });
                 res.status(201).json({
                     success: true,
                     message: '✅ Position GPS enregistrée',
@@ -197,35 +148,23 @@ app.post('/positions', verifierToken, (req, res) => {
     });
 });
 
-// ========== ROUTE 5 : Consulter l'historique des positions ==========
 app.get('/positions/:vehicule_id', verifierToken, (req, res) => {
     const { vehicule_id } = req.params;
-
     db.query(
-        `SELECT p.*, v.immatriculation, v.marque, v.modele 
-         FROM positions_gps p 
-         JOIN vehicules v ON p.vehicule_id = v.id 
-         WHERE p.vehicule_id = ? 
+        `SELECT p.*, v.immatriculation, v.marque, v.modele
+         FROM positions_gps p
+                  JOIN vehicules v ON p.vehicule_id = v.id
+         WHERE p.vehicule_id = ?
          ORDER BY p.timestamp DESC`,
         [vehicule_id],
         (err, results) => {
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
-            }
-
-            res.json({
-                success: true,
-                count: results.length,
-                historique: results
-            });
+            if (err) return res.status(500).json({ success: false, error: err.message });
+            res.json({ success: true, count: results.length, historique: results });
         }
     );
 });
 
-const PORT = 5002;
+const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
     console.log(`🚗 Service Véhicules démarré sur http://localhost:${PORT}`);
     console.log(`   📋 Routes disponibles :`);

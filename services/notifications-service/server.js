@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const axios = require('axios');
@@ -7,24 +8,26 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Connexion MySQL via variables d'environnement
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'smart_traffic'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
 db.connect((err) => {
     if (err) {
-        console.error(' Erreur MySQL:', err.message);
-        console.log(' Vérifiez que XAMPP est démarré');
+        console.error('❌ Erreur MySQL:', err.message);
+        console.log('💡 Vérifiez que XAMPP est démarré');
         return;
     }
     console.log('✅ Notifications service - Connecté à MySQL');
 });
 
-const AUTH_SERVICE_URL = 'http://localhost:5001';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
 
+// ========== MIDDLEWARE : Vérification du token JWT ==========
 const verifierToken = async (req, res, next) => {
     const token = req.headers.authorization;
 
@@ -57,6 +60,7 @@ const verifierToken = async (req, res, next) => {
     }
 };
 
+// ========== FONCTION : Envoyer une notification (interne) ==========
 const envoyerNotification = (utilisateur_id, titre, message, incident_id = null, callback) => {
     db.query(
         'INSERT INTO notifications (utilisateur_id, titre, message, incident_id, est_lue) VALUES (?, ?, ?, ?, ?)',
@@ -68,17 +72,16 @@ const envoyerNotification = (utilisateur_id, titre, message, incident_id = null,
                 return;
             }
 
-            console.log(` Notification envoyée à l'utilisateur ${utilisateur_id}: ${titre}`);
+            console.log(`📧 Notification envoyée à l'utilisateur ${utilisateur_id}: ${titre}`);
             if (callback) callback(null, { id: result.insertId, utilisateur_id, titre, message });
         }
     );
 };
 
-
+// ========== ROUTE 1: Envoyer une notification (ADMIN seulement) ==========
 app.post('/notifications', verifierToken, (req, res) => {
     const { utilisateur_id, titre, message, incident_id } = req.body;
 
-    // Vérifier si l'utilisateur est ADMIN
     if (req.user.role !== 'ADMIN') {
         return res.status(403).json({
             success: false,
@@ -93,7 +96,6 @@ app.post('/notifications', verifierToken, (req, res) => {
         });
     }
 
-    // Vérifier que l'utilisateur existe
     db.query('SELECT id, username, email FROM users WHERE id = ?', [utilisateur_id], (err, results) => {
         if (err) {
             return res.status(500).json({ success: false, error: err.message });
@@ -123,10 +125,9 @@ app.post('/notifications', verifierToken, (req, res) => {
     });
 });
 
-
+// ========== ROUTE 2: Consulter mes notifications ==========
 app.get('/notifications', verifierToken, (req, res) => {
     const { est_lue } = req.query;
-
     let sql = 'SELECT * FROM notifications WHERE utilisateur_id = ?';
     const params = [req.user.id];
 
@@ -139,14 +140,10 @@ app.get('/notifications', verifierToken, (req, res) => {
 
     db.query(sql, params, (err, results) => {
         if (err) {
-            return res.status(500).json({
-                success: false,
-                error: err.message
-            });
+            return res.status(500).json({ success: false, error: err.message });
         }
 
         const nonLues = results.filter(n => !n.est_lue).length;
-
         res.json({
             success: true,
             total: results.length,
@@ -156,83 +153,49 @@ app.get('/notifications', verifierToken, (req, res) => {
     });
 });
 
+// ========== ROUTE 3: Consulter une notification spécifique ==========
 app.get('/notifications/:id', verifierToken, (req, res) => {
     const { id } = req.params;
-
     db.query(
         'SELECT * FROM notifications WHERE id = ? AND utilisateur_id = ?',
         [id, req.user.id],
         (err, results) => {
             if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
+                return res.status(500).json({ success: false, error: err.message });
             }
-
             if (results.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Notification non trouvée'
-                });
+                return res.status(404).json({ success: false, error: 'Notification non trouvée' });
             }
-
-            res.json({
-                success: true,
-                notification: results[0]
-            });
+            res.json({ success: true, notification: results[0] });
         }
     );
 });
 
+// ========== ROUTE 4: Marquer une notification comme lue ==========
 app.patch('/notifications/:id/lire', verifierToken, (req, res) => {
     const { id } = req.params;
-
     db.query(
         'SELECT * FROM notifications WHERE id = ? AND utilisateur_id = ?',
         [id, req.user.id],
         (err, results) => {
             if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
+                return res.status(500).json({ success: false, error: err.message });
             }
-
             if (results.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Notification non trouvée'
-                });
+                return res.status(404).json({ success: false, error: 'Notification non trouvée' });
             }
-
             if (results[0].est_lue) {
-                return res.json({
-                    success: true,
-                    message: 'Notification déjà lue',
-                    notification: results[0]
-                });
+                return res.json({ success: true, message: 'Notification déjà lue', notification: results[0] });
             }
-
             db.query(
                 'UPDATE notifications SET est_lue = true WHERE id = ?',
                 [id],
-                (err, result) => {
-                    if (err) {
-                        return res.status(500).json({
-                            success: false,
-                            error: err.message
-                        });
-                    }
-
+                (err2) => {
+                    if (err2) return res.status(500).json({ success: false, error: err2.message });
                     res.json({
                         success: true,
                         message: '✅ Notification marquée comme lue',
-                        notification: {
-                            id: parseInt(id),
-                            est_lue: true,
-                            lue_le: new Date().toISOString()
-                        }
+                        notification: { id: parseInt(id), est_lue: true, lue_le: new Date().toISOString() }
                     });
                 }
             );
@@ -240,79 +203,49 @@ app.patch('/notifications/:id/lire', verifierToken, (req, res) => {
     );
 });
 
+// ========== ROUTE 5: Marquer toutes les notifications comme lues ==========
 app.patch('/notifications/marquer-toutes-lues', verifierToken, (req, res) => {
     db.query(
         'UPDATE notifications SET est_lue = true WHERE utilisateur_id = ? AND est_lue = false',
         [req.user.id],
         (err, result) => {
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
-            }
-
+            if (err) return res.status(500).json({ success: false, error: err.message });
             res.json({
                 success: true,
-                message: ` ${result.affectedRows} notification(s) marquée(s) comme lue(s)`,
+                message: `✅ ${result.affectedRows} notification(s) marquée(s) comme lue(s)`,
                 notifications_mises_a_jour: result.affectedRows
             });
         }
     );
 });
 
+// ========== ROUTE 6: Supprimer une notification ==========
 app.delete('/notifications/:id', verifierToken, (req, res) => {
     const { id } = req.params;
-
     db.query(
         'DELETE FROM notifications WHERE id = ? AND utilisateur_id = ?',
         [id, req.user.id],
         (err, result) => {
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
-            }
-
-            if (result.affectedRows === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: 'Notification non trouvée'
-                });
-            }
-
-            res.json({
-                success: true,
-                message: '✅ Notification supprimée'
-            });
+            if (err) return res.status(500).json({ success: false, error: err.message });
+            if (result.affectedRows === 0) return res.status(404).json({ success: false, error: 'Notification non trouvée' });
+            res.json({ success: true, message: '✅ Notification supprimée' });
         }
     );
 });
 
-// ========== ROUTE 7 : Compter les notifications non lues ==========
+// ========== ROUTE 7: Compter les notifications non lues ==========
 app.get('/notifications/non-lues/compteur', verifierToken, (req, res) => {
     db.query(
         'SELECT COUNT(*) as non_lues FROM notifications WHERE utilisateur_id = ? AND est_lue = false',
         [req.user.id],
         (err, results) => {
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    error: err.message
-                });
-            }
-
-            res.json({
-                success: true,
-                non_lues: results[0].non_lues
-            });
+            if (err) return res.status(500).json({ success: false, error: err.message });
+            res.json({ success: true, non_lues: results[0].non_lues });
         }
     );
 });
 
-
-const PORT = 5005;
+const PORT = process.env.PORT || 5005;
 app.listen(PORT, () => {
     console.log(`🔔 Service Notifications démarré sur http://localhost:${PORT}`);
     console.log(`   📋 Routes disponibles :`);

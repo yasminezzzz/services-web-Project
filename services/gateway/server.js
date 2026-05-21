@@ -1,14 +1,14 @@
-// server.js
+require('dotenv').config();
 const { createYoga, createSchema } = require('graphql-yoga');
 const http = require('http');
 const axios = require('axios');
 
-// ================== URLs DES MICROSERVICES ==================
-const AUTH_URL = 'http://localhost:5001';
-const VEHICULES_URL = 'http://localhost:5002';
-const TRAFIC_URL = 'http://localhost:5003';
-const INCIDENTS_URL = 'http://localhost:5004';
-const NOTIFICATIONS_URL = 'http://localhost:5005';
+// ================== URLs DES MICROSERVICES (depuis .env) ==================
+const AUTH_URL = process.env.AUTH_URL || 'http://localhost:5001';
+const VEHICULES_URL = process.env.VEHICULES_URL || 'http://localhost:5002';
+const TRAFIC_URL = process.env.TRAFIC_URL || 'http://localhost:5003';
+const INCIDENTS_URL = process.env.INCIDENTS_URL || 'http://localhost:5004';
+const NOTIFICATIONS_URL = process.env.NOTIFICATIONS_URL || 'http://localhost:5005';
 
 // ================== SCHEMA GRAPHQL ==================
 const typeDefs = /* GraphQL */ `
@@ -609,10 +609,9 @@ const yoga = createYoga({
     },
 });
 
-
 const server = http.createServer(yoga);
 
-const PORT = 4000;
+const PORT = process.env.PORT || 4000;
 
 server.listen(PORT, () => {
     console.log(`🌐 GraphQL Gateway démarrée sur http://localhost:${PORT}/graphql`);

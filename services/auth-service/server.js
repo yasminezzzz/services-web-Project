@@ -1,20 +1,20 @@
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Connexion à MySQL (XAMPP)
+// Connexion à MySQL via variables d'environnement
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'smart_traffic'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
 db.connect((err) => {
@@ -26,7 +26,7 @@ db.connect((err) => {
     console.log('✅ Auth service - Connecté à MySQL');
 });
 
-const JWT_SECRET = 'mon_super_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // ========== ROUTE 1: INSCRIPTION ==========
 app.post('/register', async (req, res) => {
@@ -142,8 +142,7 @@ app.post('/verify', (req, res) => {
     }
 });
 
-// ========== DÉMARRAGE ==========
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`🔐 Auth service: http://localhost:${PORT}`);
     console.log('   📝 Routes disponibles:');

@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const axios = require('axios');
@@ -7,24 +8,24 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Connexion à MySQL (XAMPP)
+// Connexion à MySQL via variables d'environnement
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'smart_traffic'
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
 db.connect((err) => {
     if (err) {
-        console.error('Erreur MySQL:', err.message);
-        console.log(' Vérifiez que XAMPP est démarré');
+        console.error('❌ Erreur MySQL:', err.message);
+        console.log('💡 Vérifiez que XAMPP est démarré');
         return;
     }
-    console.log(' Trafic service - Connecté à MySQL');
+    console.log('✅ Trafic service - Connecté à MySQL');
 });
 
-const AUTH_SERVICE_URL = 'http://localhost:5001';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:5001';
 
 // ========== MIDDLEWARE : Vérification du token JWT ==========
 const verifierToken = async (req, res, next) => {
@@ -59,13 +60,13 @@ const verifierToken = async (req, res, next) => {
     }
 };
 
-
 const calculerClassification = (densite) => {
     if (densite < 30) return 'Faible';
     if (densite < 70) return 'Moyen';
     return 'Élevé';
 };
 
+// ========== ROUTES (inchangées) ==========
 app.post('/zones', verifierToken, (req, res) => {
     const { nom, description, densite } = req.body;
 
@@ -92,7 +93,7 @@ app.post('/zones', verifierToken, (req, res) => {
 
             res.status(201).json({
                 success: true,
-                message: ' Zone créée avec succès',
+                message: '✅ Zone créée avec succès',
                 zone: {
                     id: result.insertId,
                     nom,
@@ -155,7 +156,7 @@ app.patch('/zones/:id/densite', verifierToken, (req, res) => {
 
             res.json({
                 success: true,
-                message: ' Densité mise à jour',
+                message: '✅ Densité mise à jour',
                 zone: { id, densite, classification }
             });
         }
@@ -184,7 +185,7 @@ app.get('/zones/congestionnees', verifierToken, (req, res) => {
 
 app.get('/zones/statistiques/globales', verifierToken, (req, res) => {
     db.query(`
-        SELECT 
+        SELECT
             COUNT(*) as total_zones,
             AVG(densite) as densite_moyenne,
             SUM(CASE WHEN classification = 'Faible' THEN 1 ELSE 0 END) as zones_faibles,
@@ -206,7 +207,7 @@ app.get('/zones/statistiques/globales', verifierToken, (req, res) => {
     });
 });
 
-const PORT = 5003;
+const PORT = process.env.PORT || 5003;
 app.listen(PORT, () => {
     console.log(`🚦 Service Trafic démarré sur http://localhost:${PORT}`);
     console.log(`   📋 Routes disponibles :`);
